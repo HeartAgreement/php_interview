@@ -10,6 +10,8 @@
 
 > 部分关联到 锁的知识
 
+[关于redo日志](https://blog.csdn.net/linuxheik/article/details/62043450)
+
 隔离级别总类
 ------------------
 
