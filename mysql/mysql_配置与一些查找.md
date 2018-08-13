@@ -42,3 +42,5 @@ SHOW STATUS LIKE 'innodb_row_lock%';
 + 增加锁等待时间，即增大下面配置项参数值，单位为秒（s）
 
 > innodb_lock_wait_timeout=500
+
+
