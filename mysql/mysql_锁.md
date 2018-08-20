@@ -1,7 +1,14 @@
 #mysql 锁
->这里只有说明 行锁（Record Lock）、排它锁（写锁 X Lock）、共享锁（读锁 S Lock）、意向锁、gap锁（间隙锁）和Next-Key Lock
+>这里只有说明 innodb 7种锁 ：
 
-> 注：这里锁信息是innodb  主要有 行锁（排它锁，共享锁） 、 gay锁 、 意向锁 、 Next-Key Lock.
+1.Shared and Exclusive Locks  (排它锁 X Lock 和共享锁 S Lock)
+2. Intention Locks (意向锁: 意向锁写 IX 和 意向锁读 IS)
+3. Record Locks 记录锁（其实就是行锁）
+4. Gap Locks （间隙锁）
+5. Next-Key Locks （下一个键锁）
+6. Insert Intention Locks (插入意向锁)
+7. AUTO-INC Locks (自增插入锁)
+8. Predicate Locks for Spatial Indexes 特殊自行官方手册
 
 > 行锁（Record Lock）:锁直接加在索引记录上面，锁住的是key（主键索引）（行锁就是 排它锁（写锁）或 共享锁（读锁））。
 
@@ -17,14 +24,13 @@
 
 > mysql默认事务隔离级别是 RR 级别，默认select 是快照读（有些时候需要 select 上排它锁，或者不读更新）update delete insert自动上排它锁
 
-#### 1.排它锁 
+#### 1. 排它锁 
 
 > 表级锁一样的道理
 
 + 概念 
 
 > 一旦一行数据(或者表)被加上写锁，其他请求无法在对该行数据加读锁和写锁。（堵塞）
-
 
 + 语句
 
@@ -35,7 +41,7 @@
 SELECT ... FOR UPDATE;
 ```
 
-#### 2.共享锁
+#### 2. 共享锁
 
 > 表级锁一样的道理
 
@@ -49,7 +55,7 @@ SELECT ... FOR UPDATE;
 
 + 语句
 
-> 在查询语句后面增加LOCK IN SHARE MODE，Mysql会对查询结果中的每行都加共享锁，
+> 在查询语句后面增加 **LOCK IN SHARE MODE**，Mysql会对查询结果中的每行都加共享锁，
 当没有其他线程对查询结果集中的任何一行使用排他锁时，可以成功申请共享锁，否则会被阻塞。
 其他线程也可以读取使用了共享锁的表，而且这些线程读取的是同一个版本的数据。
 
@@ -57,7 +63,7 @@ SELECT ... FOR UPDATE;
 SELECT .... LOCK IN SHARE MODE;
 ```
 
-#### 3.意向锁（意向共享锁 意向排他锁 innodb）
+#### 3. 意向锁（意向共享锁 意向排他锁 ）
 
 + 概念
 
@@ -67,13 +73,29 @@ SELECT .... LOCK IN SHARE MODE;
 >InnoDB中的两个表锁：
 意向共享锁（IS）：表示事务准备给数据行加入共享锁，也就是说一个数据行加共享锁前必须先取得该表的IS锁
 意向排他锁（IX）：类似上面，表示事务准备给数据行加入排他锁，说明事务在一个数据行加排他锁前必须先取得该表的IX锁。
+```sql
+SELECT .... LOCK IN SHARE MODE;
+SELECT ... FOR UPDATE;
+//先上意向锁（意向共享锁 意向排他锁 ） 在上 排它锁 或者共享锁
+```
 
-#### 4.gap锁（间隙锁）和Next-Key Lock
++ 兼容图
+
+|        | X    |  IX  | S   | IS  |
+| ---    | ---: | ---: | ---:| ---:|
+| X      | 冲突  |冲突  |冲突  |冲突  |
+| IX     | 冲突  |兼容  |冲突  |兼容  |
+| S      | 冲突  |冲突  |兼容  |兼容  |
+| IS     | 冲突  |兼容  |兼容  |兼容  |
+
+#### 4. gap锁（间隙锁）
 
 
 + 概念
 
 >（是事务级别rr级别以上）防止幻读。通过锁阻止特定条件的新记录的插入，因为插入时也要获取gap锁
+
+> 如果id未编入索引或具有非唯一索引，则该语句会锁定前一个间隙。
 
 > 间隙锁（Gap Lock）:锁定索引记录间隙，确保索引记录的间隙不变。
 
@@ -85,8 +107,6 @@ SELECT .... LOCK IN SHARE MODE;
 + 例如：
 
 ```sql
-SELECT ... where id > 5 FOR UPDATE; //gap就会锁住一个范围 (5,无尽大) (数据库只有1-5条数据,堵塞insert添加数据)
-//当然这不是完全的防止幻读的
 //数据库结构
 /**
 主键     普通索引
@@ -99,10 +119,53 @@ SELECT ... where id > 5 FOR UPDATE; //gap就会锁住一个范围 (5,无尽大) 
 //SELECT ... where number between 1 and 5 FOR UPDATE;  //假如得到5条数据
 //insert ... values(2) //会得到6条数据
 //SELECT ... where number between 1 and 5 FOR UPDATE;  //假如得到5条数据
-//这里就涉及到主键和索引的问题 gay是加载主键上的 gay锁住了id(1,5)的数据
-SELECT ... where id =1  FOR UPDATE; //gap就会锁住一个范围 (1,1)
+//这里就涉及到主键和索引的问题 gap是加载主键上的 gap锁住了id(1,5)的数据
+SELECT ... where id =1  FOR UPDATE; //不会有gap锁
 
 ```
+#### 5. 下一个键锁 Next-KeyLock
+
++ 概念
+
+> 索引记录上的记录锁定和索引记录之前的间隙上的间隙锁定的组合。
+
+>假设索引包含值10,11,13和20.此索引的可能的下一个键锁定包括以下间隔，其中圆括号表示排除间隔端点，方括号表示包含端点：
+```
+ (negative infinity, 10]
+ (10, 11]
+ (11, 13]
+ (13, 20]
+ (20, positive infinity)
+```
+#### 6. Insert Intention Locks (插入意向锁)
+    
++ 概念
+
+> 一个事务以将记录插入间隙(gap)。该事务在等待获取排它锁时采用插入意向锁
+
+> 就是锁事务可以插入gap锁锁住的范围
+
+```
+// 例子:
+1. 假如事务1 SELECT ... where number between 1 and 5 FOR UPDATE;
+2. gap（间隙锁会锁住）1到5 这个间隙 不允许插入 
+3. 事务2 INSERT INTO .... (id) VALUES (4); 
+//获取排它锁时采用插入意图锁
+//可以不冲突（不堵塞）插入
+```
+
+#### 7. AUTO-INC Locks (自增插入锁)
+
++ 概念
+
+> RR级默认没有开启
+
+> 一个AUTO-INC Locks是通过交易将与表中取得一个特殊的表级锁 AUTO_INCREMENT列。在最简单的情况下，
+如果一个事务正在向表中插入值，则任何其他事务必须等待对该表执行自己的插入，以便第一个事务插入的行接收连续的主键值。
+
+> 该innodb_autoinc_lock_mode 配置选项控制用于自动增加锁定的算法。
+> 它允许您选择如何在可预测的自动增量值序列和插入操作的最大并发之间进行权衡。
+
 
 总结
 --------------------

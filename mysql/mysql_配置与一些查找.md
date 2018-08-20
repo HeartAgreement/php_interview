@@ -43,4 +43,7 @@ SHOW STATUS LIKE 'innodb_row_lock%';
 
 > innodb_lock_wait_timeout=500
 
+> 当表数据缓存在InnoDB 缓冲池中时，可以通过查询重复访问它，而无需任何磁盘I / O. 
+使用innodb_buffer_pool_size 选项指定缓冲池的大小 。此内存区域非常重要，通常建议将 innodb_buffer_pool_size其配置为系统内存的50％到75％。
+
 
